@@ -9,11 +9,11 @@
 #include <sys/socket.h>
 
 const int local_port = 8080;
-const char lan_addr[] = "192.168.1.116";
-const char wifi_addr[] = "192.168.2.104";
+const char lan_addr[] = "192.168.1.114";
+const char wifi_addr[] = "192.168.2.107";
 const char file_name[] = "/tmp/dest.txt";
 
-#define REALLY_BIG 65536
+#define REALLY_BIG (1024 * 1024) 
 
 /* Convenience structure to determine space needed for cmsg. */
 typedef union {
@@ -92,13 +92,22 @@ int build_endpoint()
 {
     int retval, error;
     retval = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
-    int rcv_buf_size = 65535;
-    setsockopt(retval, SOL_SOCKET, SO_RCVBUF, &rcv_buf_size, sizeof (rcv_buf_size));
-    if(retval < 0 )
-    {
-        fprintf(stderr, "socket creation failed\n");
-        exit(-1);
-    }
+    perror("socket create result");
+
+    // set the rvc buffer size
+    int rcv_buf_size = 1024 * 1024 * 10; 
+    error = setsockopt(retval, SOL_SOCKET, SO_RCVBUF, &rcv_buf_size, sizeof (rcv_buf_size));
+    perror("set [rcv_buf] result");
+
+    // set the sender buffer size
+    int snd_buf_size = 1024 * 1024 * 10;                                        
+    error = setsockopt(retval, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof (snd_buf_size));
+    perror("set [snd_buf] result");
+
+    // set max burst
+    int max_burst = 1024;                                                       
+    setsockopt(retval, SOL_SCTP, SCTP_MAX_BURST, &max_burst, sizeof(max_burst));
+    perror("set [max_burst] result");
 
     // bind to a LAN NIC
     struct sockaddr_in myaddr;

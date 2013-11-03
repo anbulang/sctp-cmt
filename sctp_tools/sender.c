@@ -10,18 +10,21 @@
 #include <sys/types.h>
 
 const int local_port = 7070;
-const char lan_addr[] = "192.168.1.114";
-const char wifi_addr[] = "192.168.2.107";
+const char lan_addr[] = "192.168.1.106";
+const char wifi_addr[] = "192.168.2.110";
 
 const int peer_port = 8080;
-const char p_lan_addr[] = "192.168.1.116";
-const char p_wifi_addr[] = "192.168.2.104";
+const char p_lan_addr[] = "192.168.1.114";
+const char p_wifi_addr[] = "192.168.2.107";
 
-const char file_name[] = "/boot/initrd.img-3.11.1+";
+const char file_name[] = "/home/xiangzhc/ponponpon.mp3";
 
 struct sockaddr_in local_addr[2];
 struct sockaddr_in peer_addr[2];
-#define REALLY_BIG 65536
+#define REALLY_BIG (128 * 1024)
+
+char message[REALLY_BIG] = "";
+
 
 /* Convenience structure to determine space needed for cmsg. */
 typedef union {
@@ -40,11 +43,22 @@ int build_endpoint()
 {
     int retval, error;
     retval = socket(AF_INET, SOCK_STREAM, IPPROTO_SCTP);
-    if(retval < 0 )
-    {
-        fprintf(stderr, "socket creation failed\n");
-        exit(-1);
-    }
+    perror("socket create result");
+
+    printf("SO_RCVBUF=%d, SO_SNDBUF=%d\n", SO_RCVBUF, SO_SNDBUF);
+
+  
+    int rcv_buf_size = 1024 * 1024;// 1024 * 1024 * 10;                                        
+    error = setsockopt(retval, SOL_SOCKET, SO_RCVBUF, &rcv_buf_size, sizeof (rcv_buf_size));
+    perror("set [rcv_buf] result");                                             
+
+    int snd_buf_size = 65536;//1024 * 1024 * 10; 
+    error = setsockopt(retval, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof (snd_buf_size));
+    perror("set [snd_buf] result");                                             
+    
+    int max_burst = 1024;                                                       
+    setsockopt(retval, SOL_SCTP, SCTP_MAX_BURST, &max_burst, sizeof(max_burst));
+    perror("set [max_burst] result");  
 
     local_addr[0].sin_family = AF_INET;
     local_addr[0].sin_port = htons(local_port);
@@ -62,6 +76,7 @@ int build_endpoint()
     local_addr[1].sin_family = AF_INET;
     local_addr[1].sin_port = htons(local_port);
     inet_pton(AF_INET, wifi_addr, &(local_addr[1].sin_addr));
+    
     error = sctp_bindx(
             retval, 
             (struct sockaddr*) local_addr + 1, 
@@ -111,7 +126,6 @@ void do_send(int sock)
     struct iovec iov;
     int error;
     int done = 0;
-    char message[REALLY_BIG] = "hello!";
 
     FILE *f = fopen(file_name, "r");
     if (f == NULL)
@@ -134,11 +148,14 @@ void do_send(int sock)
     int read = 0;
     while ((read = fread(message, 1, REALLY_BIG, f)) != 0)
     {
+        printf("%d byes has been read\n", read);
         int acc = 0;
-        while(acc != read)
+        while(acc != read) {
             acc += send(sock, message, read, 0); 
+//            printf("\t%d bytes has been sent\n", acc);
+        }
         finished += acc;
-        printf("%d bytes has been sent\n", finished);
+        printf("====>cycle done! finished=%d\n", finished);
     }
 
     char command[100];

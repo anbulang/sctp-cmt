@@ -13,16 +13,18 @@
 
 char* cmt_print_trxpt(struct sctp_transport *t)
 {
-    static char ret[128];
+    static char ret[256];
     memset(ret, 0, sizeof(ret));
     if (!t)
 	return ret;
-    snprintf(ret, sizeof(ret), "trxpt@%p[addr=%pISc,state=%d,cwnd=%d,ssthresh=%d,pcumack=0x%x,find_pc=%d,new_pc=%d],", 
+    snprintf(ret, sizeof(ret), "trxpt@%p[addr=%pISc,state=%d,cwnd=%d,ssthresh=%d,sfr.saw_newack=%d,sfr.highest=0x%x,cuc.pcumack=0x%x,cuc.find_pc=%d,cuc.new_pc=%d],", 
             t,
             &t->ipaddr.sa,
             t->state,
             t->cwnd,
             t->ssthresh,
+	    t->cmt_sfr.saw_newack,
+	    t->cmt_sfr.hisfd,
 	    t->cmt_cuc.pseudo_cumack,
 	    t->cmt_cuc.find_pseudo_cumack,
 	    t->cmt_cuc.new_pseudo_cumack);
@@ -94,7 +96,7 @@ char* cmt_print_queued_tsn(struct list_head *queue, struct sctp_transport *trans
 		tsn = ntohl(tchunk->subh.data_hdr->tsn);
 		ret = snprintf(buf + strlen(buf),
 				sizeof(buf) - strlen(buf),
-				tchunk->tsn_gap_acked? "0x%x_A, ": "0x%x, ",
+				tchunk->tsn_gap_acked? "0x%x(A), ": "0x%x, ",
 				tsn);
 		// success when return value is non-negative and less than n
 		if(!(ret > 0 && ret < sizeof(buf) - strlen(buf)))

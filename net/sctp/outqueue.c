@@ -59,6 +59,13 @@
 #include <net/sctp/sm.h>
 #include <net/sctp/cmt.h>
 
+#ifdef pr_debug
+	#undef pr_debug
+#endif
+
+#define pr_debug(fmt, ...) ;
+
+
 /* Declare internal functions here.  */
 static int sctp_acked(struct sctp_sackhdr *sack, __u32 tsn);
 static void sctp_check_transmitted(struct sctp_outq *q,
@@ -201,6 +208,31 @@ static inline int sctp_cacc_skip(struct sctp_transport *primary,
 	return 0;
 }
 
+/** CMT-SFR algorithm
+ */
+static inline int sctp_cmt_sfr(struct sctp_transport *transport,
+				 __u32 tsn)
+{
+	if (!transport) { 
+//		cmt_debug("***********transport is null!***************\n");
+		dump_stack();
+		return 1;
+	}
+	// say 	1. 6 was sent through A; 789 through B. 
+	//	2. The corresponding ack is 6,[8-9]
+	//
+	// Then the B.hisfd == 9
+	// 7 is regarded as missing
+	if (transport->cmt_sfr.saw_newack &&
+			TSN_lt(tsn, transport->cmt_sfr.hisfd)) {
+//		cmt_debug("---->counter ++\n");
+		return 1;
+	}
+
+//	cmt_debug("---->eliminate unneceseary counter++!\n");
+	return 0;
+
+}
 /* Initialize an existing sctp_outq.  This does the boring stuff.
  * You still need to define handlers if you really want to DO
  * something with this structure...
@@ -1033,7 +1065,7 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 				  */
 				if (transport == asoc->peer.active_path
 						&& asoc->peer.retran_path != asoc->peer.active_path) {
-					cmt_debug("%s: switch to retran\n", __func__);
+//					cmt_debug("%s: switch to retran\n", __func__);
 					new_transport = asoc->peer.retran_path;
 					goto use_retran;
 				}
@@ -1168,34 +1200,38 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
 
-//	int c = 0;
-//	static char buf[256];
-//	memset(buf, 0, sizeof(buf));
-//	list_for_each_entry(transport, transport_list,
-//		transports)
-//		c += snprintf(
-//			buf + c,
-//			sizeof(buf) - c,
-//			"trxpt|%p|cwnd=%d|ssthresh=%d|,",
-//			transport,
-//			transport->cwnd,
-//			transport->ssthresh);
-//
-//	cmt_debug("%s: %s\n", __func__, buf);
+	int c = 0;
+	static char buf[256];
+	memset(buf, 0, sizeof(buf));
+	list_for_each_entry(transport, transport_list,
+		transports)
+		c += snprintf(
+			buf + c,
+			sizeof(buf) - c,
+			"trxpt|%p|cwnd=%d|ssthresh=%d|,",
+			transport,
+			transport->cwnd,
+			transport->ssthresh);
+
+	cmt_debug("%s: %s\n", __func__, buf);
 
 
-//	cmt_debug("%s: %s\n", __func__, cmt_print_assoc(asoc));
-//	to_console = cmt_print_queued_tsn(&q->retransmit, NULL);
-//	cmt_debug("%s\n", to_console);
-//
-//	list_for_each_entry(transport, transport_list, transports) {
-//		to_console = cmt_print_queued_tsn(&transport->transmitted, transport);
-//		cmt_debug("%s\n", to_console);
-//	}
-//
-//	to_console = cmt_print_sackhdr(sack);
-//	cmt_debug("%s\n", to_console);
-	
+/*	// print association
+	cmt_debug("%s: %s\n", __func__, cmt_print_assoc(asoc));
+
+	// print what's in the retransmit queue
+	to_console = cmt_print_queued_tsn(&q->retransmit, NULL);
+	cmt_debug("%s\n", to_console);
+
+	// print what's in the queues.
+	list_for_each_entry(transport, transport_list, transports) {
+		to_console = cmt_print_queued_tsn(&transport->transmitted, transport);
+		cmt_debug("%s\n", to_console);
+	}
+
+	to_console = cmt_print_sackhdr(sack);
+	cmt_debug("%s\n", to_console);
+*/	
 	/* Print the context END */
 
 	sack_ctsn = ntohl(sack->cum_tsn_ack);
@@ -1238,6 +1274,18 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 		}
 	}
 
+	/* CMT-SFR
+	 * On receipt of a SACK containing gap report
+	 * 	1.for each destination address d(i), initialize
+	 * 	d(i).saw_newack = false
+	 */
+	if (gap_ack_blocks) {
+		list_for_each_entry(transport, transport_list, transports) {
+			transport->cmt_sfr.saw_newack = false;
+			transport->cmt_sfr.hisfd = asoc->c.initial_tsn;
+		}
+	}
+
 	/* Get the highest TSN in the sack. */
 	highest_tsn = sack_ctsn;
 	if (gap_ack_blocks)
@@ -1276,6 +1324,10 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 		asoc->ctsn_ack_point = sack_ctsn;
 		accum_moved = 1;
 	}
+
+//	list_for_each_entry(transport, transport_list, transports) {
+//		cmt_debug("===========>%s \n", cmt_print_trxpt(transport));
+//	}
 
 	if (gap_ack_blocks) {
 
@@ -1447,9 +1499,43 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				if (!tchunk->transport)
 					migrate_bytes += sctp_data_size(tchunk);
 				forward_progress = true;
+
+
+				// TODO: For each retransmit,
+				// The tsn->transport would be set to the
+				// latest path, to which it's sent.
+				// CMT-SFR 2) for each TSN t(a) being newly
+				// acked
+				// set d(a).saw_newack=true;
+				// CMT-SFR 3) set highest_in_sack_for_dest
+				if (transport) {// use tchunk -> transport instead
+					transport->cmt_sfr.saw_newack = true;
+					if (TSN_lt(transport->cmt_sfr.hisfd, tsn))
+						transport->cmt_sfr.hisfd = tsn;
+				}
+
+				/*
+				 * SFR-CACC algorithm:
+				 * 2) If the SACK contains gap acks
+				 * and the flag CHANGEOVER_ACTIVE is
+				 * set the receiver of the SACK MUST
+				 * take the following action:
+				 *
+				 * B) For each TSN t being acked that
+				 * has not been acked in any SACK so
+				 * far, set cacc_saw_newack to 1 for
+				 * the destination that the TSN was
+				 * sent to.
+				 */
+				if (transport && sack->num_gap_ack_blocks &&
+						q->asoc->peer.primary_path->cacc.
+						changeover_active)
+					transport->cacc.cacc_saw_newack	= 1;
+				
+				
 			}
 
-			if (TSN_lte(tsn, sack_ctsn)) {
+			if (TSN_lte(tsn, sack_ctsn)) {// CXZ: cum acked
 				/* RFC 2960  6.3.2 Retransmission Timer Rules
 				 *
 				 * R3) Whenever a SACK is received
@@ -1461,32 +1547,11 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				 */
 				restart_timer = 1;
 				forward_progress = true;
-
-				if (!tchunk->tsn_gap_acked) {
-					/*
-					 * SFR-CACC algorithm:
-					 * 2) If the SACK contains gap acks
-					 * and the flag CHANGEOVER_ACTIVE is
-					 * set the receiver of the SACK MUST
-					 * take the following action:
-					 *
-					 * B) For each TSN t being acked that
-					 * has not been acked in any SACK so
-					 * far, set cacc_saw_newack to 1 for
-					 * the destination that the TSN was
-					 * sent to.
-					 */
-					if (transport &&
-					    sack->num_gap_ack_blocks &&
-					    q->asoc->peer.primary_path->cacc.
-					    changeover_active)
-						transport->cacc.cacc_saw_newack
-							= 1;
-				}
-
 				list_add_tail(&tchunk->transmitted_list,
 					      &q->sacked);
-			} else {
+
+
+			} else {// gap acked
 				/* RFC2960 7.2.4, sctpimpguide-05 2.8.2
 				 * M2) Each time a SACK arrives reporting
 				 * 'Stray DATA chunk(s)' record the highest TSN
@@ -1668,13 +1733,20 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			/* SFR-CACC may require us to skip marking
 			 * this chunk as missing.
 			 */
-			if (!transport || !sctp_cacc_skip(primary,
+			if (!transport || (
+						!sctp_cacc_skip(primary,
 						chunk->transport,
-						count_of_newacks, tsn)) {
+						count_of_newacks, tsn)
+						
+						&&
+
+						sctp_cmt_sfr(chunk->transport, tsn)
+						
+						)) {
 				chunk->tsn_missing_report++;
 
-				pr_debug("%s: tsn:0x%x missing counter:%d\n",
-					 __func__, tsn, chunk->tsn_missing_report);
+				pr_debug("%s: tsn:0x%x missing counter:%d, reason: cacc=%d, sfr=%d\n",
+					 __func__, tsn, chunk->tsn_missing_report, cacc, sfr);
 			}
 		}
 		/*

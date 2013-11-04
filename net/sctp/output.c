@@ -184,6 +184,7 @@ sctp_xmit_t sctp_packet_transmit_chunk(struct sctp_packet *packet,
 		break;
 
 	case SCTP_XMIT_RWND_FULL:
+	case SCTP_XMIT_CWND_FULL:
 	case SCTP_XMIT_OK:
 	case SCTP_XMIT_NAGLE_DELAY:
 		break;
@@ -694,7 +695,7 @@ static sctp_xmit_t sctp_packet_can_append_data(struct sctp_packet *packet,
 	 */
 	if (chunk->fast_retransmit != SCTP_NEED_FRTX)
 		if (flight_size >= transport->cwnd) {
-			retval = SCTP_XMIT_RWND_FULL;
+			retval = SCTP_XMIT_CWND_FULL;
 			goto finish;
 		}
 

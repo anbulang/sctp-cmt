@@ -942,6 +942,17 @@ struct sctp_transport {
 		char cacc_saw_newack;
 	} cacc;
 
+	struct {
+		__u32 hisfd; // highest in sack for dest;
+		char saw_newack;
+	} cmt_sfr;
+
+	struct {                                                                
+		__u32 pseudo_cumack;                                            
+		bool new_pseudo_cumack;                                         
+		bool find_pseudo_cumack;                                        
+	} cmt_cuc;
+
 	/* 64-bit random number sent with heartbeat. */
 	__u64 hb_nonce;
 

@@ -57,6 +57,7 @@
 
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 
 /* Declare internal functions here.  */
 static int sctp_acked(struct sctp_sackhdr *sack, __u32 tsn);
@@ -628,6 +629,7 @@ redo:
 			break;
 
 		case SCTP_XMIT_RWND_FULL:
+		case SCTP_XMIT_CWND_FULL:
 			/* Send this packet. */
 			error = sctp_packet_transmit(pkt);
 
@@ -986,7 +988,7 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			     (new_transport->state == SCTP_UNCONFIRMED) ||
 			     (new_transport->state == SCTP_PF)))
 				new_transport = asoc->peer.active_path;
-			if (new_transport->state == SCTP_UNCONFIRMED)
+use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 				continue;
 
 			/* Change packets if necessary.  */
@@ -1022,9 +1024,22 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			status = sctp_packet_transmit_chunk(packet, chunk, 0);
 
 			switch (status) {
-			case SCTP_XMIT_PMTU_FULL:
-			case SCTP_XMIT_RWND_FULL:
-			case SCTP_XMIT_NAGLE_DELAY:
+			case SCTP_XMIT_CWND_FULL:// 3
+				// switch to retran path while the active path is full
+				/*cmt_debug("==========>transport=%p, active=%p, retran=%p, \n",
+				  transport,
+				  asoc->peer.active_path,
+				  asoc->peer.retran_path);
+				  */
+				if (transport == asoc->peer.active_path
+						&& asoc->peer.retran_path != asoc->peer.active_path) {
+					cmt_debug("%s: switch to retran\n", __func__);
+					new_transport = asoc->peer.retran_path;
+					goto use_retran;
+				}
+			case SCTP_XMIT_RWND_FULL: // 2
+			case SCTP_XMIT_PMTU_FULL: // 1
+			case SCTP_XMIT_NAGLE_DELAY:// 4
 				/* We could not append this chunk, so put
 				 * the chunk back on the output queue.
 				 */
@@ -1396,7 +1411,6 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 			 * while DATA was outstanding).
 			 */
 			if (!tchunk->tsn_gap_acked) {
-				tchunk->tsn_gap_acked = 1;
 				*highest_new_tsn_in_sack = tsn;
 				bytes_acked += sctp_data_size(tchunk);
 				if (!tchunk->transport)
@@ -1459,6 +1473,8 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				 */
 				list_add_tail(lchunk, &tlist);
 			}
+			// Do this at the end
+			tchunk->tsn_gap_acked = 1;
 		} else {
 			if (tchunk->tsn_gap_acked) {
 				pr_debug("%s: receiver reneged on data TSN:0x%x\n",

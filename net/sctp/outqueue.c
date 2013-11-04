@@ -59,6 +59,13 @@
 #include <net/sctp/sm.h>
 #include <net/sctp/cmt.h>
 
+//#ifdef pr_debug
+//	#undef pr_debug
+//#endif
+//
+//#define pr_debug(fmt, ...) ;
+
+
 /* Declare internal functions here.  */
 static int sctp_acked(struct sctp_sackhdr *sack, __u32 tsn);
 static void sctp_check_transmitted(struct sctp_outq *q,
@@ -1184,17 +1191,17 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 //	cmt_debug("%s: %s\n", __func__, buf);
 
 
-//	cmt_debug("%s: %s\n", __func__, cmt_print_assoc(asoc));
-//	to_console = cmt_print_queued_tsn(&q->retransmit, NULL);
-//	cmt_debug("%s\n", to_console);
-//
-//	list_for_each_entry(transport, transport_list, transports) {
-//		to_console = cmt_print_queued_tsn(&transport->transmitted, transport);
-//		cmt_debug("%s\n", to_console);
-//	}
-//
-//	to_console = cmt_print_sackhdr(sack);
-//	cmt_debug("%s\n", to_console);
+	cmt_debug("%s: %s\n", __func__, cmt_print_assoc(asoc));
+	to_console = cmt_print_queued_tsn(&q->retransmit, NULL);
+	cmt_debug("%s: %s\n", __func__, to_console);
+
+	list_for_each_entry(transport, transport_list, transports) {
+		to_console = cmt_print_queued_tsn(&transport->transmitted, transport);
+		cmt_debug("%s\n", to_console);
+	}
+
+	to_console = cmt_print_sackhdr(sack);
+	cmt_debug("%s\n", to_console);
 	
 	/* Print the context END */
 
@@ -1238,6 +1245,13 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 		}
 	}
 
+	/* CMT-CUC (1)
+	 * on receipt of a sack                                         
+	 *	for any destinations d, reset d.new_pseudo_cumack = FALSE;        
+	 */                                                                     
+	list_for_each_entry(transport, transport_list, transports)              
+		transport->cmt_cuc.new_pseudo_cumack = false;                   
+
 	/* Get the highest TSN in the sack. */
 	highest_tsn = sack_ctsn;
 	if (gap_ack_blocks)
@@ -1247,6 +1261,36 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 		asoc->highest_sacked = highest_tsn;
 
 	highest_new_tsn = sack_ctsn;
+
+	/* CMT-CUC (2) 
+	 * if the sack carries a new cum ack then
+	 * for each TSN t(c) being cum acked for the __1st__ time, that was
+	 * not acked through prior gap reports do
+	 * 	i) let d(c) be the destination
+	 * 	ii) d(c).find_pseudo_cumack=TRUE;
+	 * 	iii) d(c).new_seudo_cumack=TRUE;
+	 */
+	if (TSN_lt(asoc->ctsn_ack_point, sack_ctsn)) {		
+		list_for_each_entry(transport, transport_list, transports) {
+			struct list_head *lchunk, *temp;
+			struct sctp_chunk *tchunk;
+			__u32 tsn;
+			__u32 sack_ctsn = ntohl(sack->cum_tsn_ack);
+			list_for_each_safe(lchunk, temp, &transport->transmitted) {
+				tchunk = list_entry(lchunk, struct sctp_chunk, transmitted_list);
+				tsn = ntohl(tchunk->subh.data_hdr->tsn);
+				if (sctp_acked(sack, tsn)// this tsn's acked 
+						&& !tchunk->tsn_gap_acked // newly acked
+						&& TSN_lte(tsn, sack_ctsn)) { // cum acked
+					transport->cmt_cuc.find_pseudo_cumack = true;
+					transport->cmt_cuc.new_pseudo_cumack = true;
+					cmt_debug("%p---->new cum_ack comes\n", transport);
+					break;
+				}
+
+			}
+		}
+	}
 
 	/* Run through the retransmit queue.  Credit bytes received
 	 * and free those chunks that we can.
@@ -1382,9 +1426,11 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 	int migrate_bytes = 0;
 	bool forward_progress = false;
 
+	static char queued_tsn[1024];
 	sack_ctsn = ntohl(sack->cum_tsn_ack);
 
 	INIT_LIST_HEAD(&tlist);
+	memset(queued_tsn, 0, sizeof(queued_tsn));
 
 	/* The while loop will skip empty transmitted queues. */
 	while (NULL != (lchunk = sctp_list_dequeue(transmitted_queue))) {
@@ -1502,11 +1548,58 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				 * older than that newly acknowledged DATA
 				 * chunk, are qualified as 'Stray DATA chunks'.
 				 */
+
+				// CMT-CUC (3) 
+				// if gap reports are present in the sack then 
+				// for each TSN tp being processed from  the 
+				// RETRANSMISSION queue do
+				// i) let d(p) be the destination
+				// ii) if(d(p).find_pseudo_cumack == TRUE) and
+				// 	t(p) was not acked in the past then
+				// 		d(p).pseudo_cumack = t(p)
+				// 		d(p).find_pseudo_cumack=false;
+				if (ntohs(sack->num_gap_ack_blocks) &&          
+						!tchunk->tsn_gap_acked &&       
+						transport &&                    
+						transport->cmt_cuc.find_pseudo_cumack) {
+					transport->cmt_cuc.pseudo_cumack = tsn; 
+					transport->cmt_cuc.find_pseudo_cumack = false;
+					cmt_debug("%p--->pseudo_cumack=0x%x\n", transport, tsn);
+				}                                               
+				// (iii) if t(p) is acked via gap reports for     
+				// the 1st time and d(p).pseudo_cumack == t(p)
+				if (!tchunk->tsn_gap_acked &&                   
+						transport &&                    
+						transport->cmt_cuc.pseudo_cumack == tsn) {
+					transport->cmt_cuc.new_pseudo_cumack = true;
+					transport->cmt_cuc.find_pseudo_cumack = true;
+					cmt_debug("%p---->update cwnd!\n", transport);
+				} 
+				// CXZ: put the selectively acked chunks to the list
 				list_add_tail(lchunk, &tlist);
 			}
 			// Do this at the end
 			tchunk->tsn_gap_acked = 1;
-		} else {
+		} else {// not acked
+
+			// CMT-CUC (3) 
+			// if gap reports are present in the sack then 
+			// for each TSN tp being processed from  the 
+			// RETRANSMISSION queue do
+			// i) let d(p) be the destination
+			// ii) if(d(p).find_pseudo_cumack == TRUE) and
+			// 	t(p) was not acked in the past then
+			// 		d(p).pseudo_cumack = t(p)
+			// 		d(p).find_pseudo_cumack=false;
+			if (ntohs(sack->num_gap_ack_blocks) &&          
+					!tchunk->tsn_gap_acked &&       
+					transport &&                    
+					transport->cmt_cuc.find_pseudo_cumack) {
+				transport->cmt_cuc.pseudo_cumack = tsn; 
+				transport->cmt_cuc.find_pseudo_cumack = false;
+				cmt_debug("%p--->pseudo_cumack=0x%x\n", transport, tsn);
+			}
+
 			if (tchunk->tsn_gap_acked) {
 				pr_debug("%s: receiver reneged on data TSN:0x%x\n",
 					 __func__, tsn);

@@ -60,6 +60,7 @@
 #include <net/ipv6.h>
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 
 /* Forward declarations for internal functions. */
 static void sctp_assoc_bh_rcv(struct work_struct *work);
@@ -729,6 +730,9 @@ struct sctp_transport *sctp_assoc_add_peer(struct sctp_association *asoc,
 	 *   receiver advertised window).
 	 */
 	peer->cwnd = min(4*asoc->pathmtu, max_t(__u32, 2*asoc->pathmtu, 4380));
+    cmt_debug("Initialization *(%p)->cwnd=%d\n", 
+            peer, 
+            peer->cwnd);
 
 	/* At this point, we may not have the receiver's advertised window,
 	 * so initialize ssthresh to the default value and it will be set
@@ -761,6 +765,11 @@ struct sctp_transport *sctp_assoc_add_peer(struct sctp_association *asoc,
 	    peer->state != SCTP_UNCONFIRMED) {
 		asoc->peer.retran_path = peer;
 	}
+
+	// CMT-CUC (0)
+	// At the beginning of an association
+	// for any destiantionss d, reset
+	peer->cmt_cuc.find_pseudo_cumack = true;
 
 	return peer;
 }

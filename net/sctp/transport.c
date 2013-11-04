@@ -55,6 +55,7 @@
 #include <linux/random.h>
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 
 /* 1st Level Abstractions.  */
 
@@ -403,10 +404,18 @@ void sctp_transport_raise_cwnd(struct sctp_transport *transport,
 	 * if the cumulative TSN whould advanced and the congestion window is
 	 * being fully utilized.
 	 */
-	if (TSN_lte(sack_ctsn, transport->asoc->ctsn_ack_point) ||
-	    (flight_size < cwnd))
+	/* CMT-CUC 4) for each destination d(i) do
+	 *	if(d(i).new_pseudo_cumack=true)
+	 *	then update cwnd
+	 */
+	if ((!transport->cmt_cuc.new_pseudo_cumack && 
+				TSN_lte(sack_ctsn, transport->asoc->ctsn_ack_point)) 
+			|| (flight_size < cwnd))
 		return;
 
+	if (transport->cmt_cuc.new_pseudo_cumack && TSN_lte(sack_ctsn, transport->asoc->ctsn_ack_point)) {
+		cmt_debug("%p====>new_pseudo_cumack works!\n", transport);
+	}
 	ssthresh = transport->ssthresh;
 	pba = transport->partial_bytes_acked;
 	pmtu = transport->asoc->pathmtu;
@@ -470,6 +479,12 @@ void sctp_transport_raise_cwnd(struct sctp_transport *transport,
 	transport->partial_bytes_acked = pba;
 }
 
+static const char *const cwnd_lower_reason[] = {
+	"T3_RTX",
+	"FAST_RTX",
+	"ECNE",
+	"INACTIVE"
+};
 /* This routine is used to lower the transport's cwnd when congestion is
  * detected.
  */
@@ -558,8 +573,9 @@ void sctp_transport_lower_cwnd(struct sctp_transport *transport,
 
 	transport->partial_bytes_acked = 0;
 
-	pr_debug("%s: transport:%p, reason:%d, cwnd:%d, ssthresh:%d\n",
-		 __func__, transport, reason, transport->cwnd,
+
+	pr_debug("%s: %s: transport:%p, reason:%d, cwnd:%d, ssthresh:%d\n",
+		 __func__, cwnd_lower_reason[reason], transport, reason, transport->cwnd,
 		 transport->ssthresh);
 }
 

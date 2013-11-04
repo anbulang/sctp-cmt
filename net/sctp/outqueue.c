@@ -1158,6 +1158,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	__u32 sack_ctsn, ctsn, tsn;
 	__u32 highest_tsn, highest_new_tsn;
 	__u32 sack_a_rwnd;
+	char *to_console;
 	unsigned int outstanding;
 	struct sctp_transport *primary = asoc->peer.primary_path;
 	int count_of_newacks = 0;
@@ -1166,6 +1167,36 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
+
+//	int c = 0;
+//	static char buf[256];
+//	memset(buf, 0, sizeof(buf));
+//	list_for_each_entry(transport, transport_list,
+//		transports)
+//		c += snprintf(
+//			buf + c,
+//			sizeof(buf) - c,
+//			"trxpt|%p|cwnd=%d|ssthresh=%d|,",
+//			transport,
+//			transport->cwnd,
+//			transport->ssthresh);
+//
+//	cmt_debug("%s: %s\n", __func__, buf);
+
+
+//	cmt_debug("%s: %s\n", __func__, cmt_print_assoc(asoc));
+//	to_console = cmt_print_queued_tsn(&q->retransmit, NULL);
+//	cmt_debug("%s\n", to_console);
+//
+//	list_for_each_entry(transport, transport_list, transports) {
+//		to_console = cmt_print_queued_tsn(&transport->transmitted, transport);
+//		cmt_debug("%s\n", to_console);
+//	}
+//
+//	to_console = cmt_print_sackhdr(sack);
+//	cmt_debug("%s\n", to_console);
+	
+	/* Print the context END */
 
 	sack_ctsn = ntohl(sack->cum_tsn_ack);
 	gap_ack_blocks = ntohs(sack->num_gap_ack_blocks);

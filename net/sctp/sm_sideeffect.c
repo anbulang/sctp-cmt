@@ -59,6 +59,11 @@
 #include <net/sctp/sm.h>
 #include <net/sctp/cmt.h>
 
+#ifdef pr_debug
+	#undef pr_debug
+#endif
+
+#define pr_debug(fmt, ...) ;
 static int sctp_cmd_interpreter(sctp_event_t event_type,
 				sctp_subtype_t subtype,
 				sctp_state_t state,
@@ -1449,14 +1454,26 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 			break;
 
 		case SCTP_CMD_T1_RETRAN:
-			cmt_debug("%s: %s", "T1_RETRAN", cmt_print_cwnd(&cmd->obj.transport->transports));
+			if (cmd->obj.transport->asoc) {
+				cmt_debug("transport[%p] expired!\n", cmd->obj.transport);
+				cmt_debug("%s: %s\n", 
+					"T1_RETRAN", 
+					cmt_print_cwnd(&cmd->obj.transport->asoc->peer.transport_addr_list));
+				cmt_debug("%s: %s", "T1_RETRAN", cmt_print_assoc(cmd->obj.transport->asoc));
+			}
 			/* Mark a transport for retransmission.  */
 			sctp_retransmit(&asoc->outqueue, cmd->obj.transport,
 					SCTP_RTXR_T1_RTX);
 			break;
 
 		case SCTP_CMD_RETRAN:
-			cmt_debug("%s: %s", "T3_RETRAN", cmt_print_cwnd(&cmd->obj.transport->transports));
+			if (cmd->obj.transport->asoc) {
+				cmt_debug("transport[%p] expired!\n", cmd->obj.transport);
+				cmt_debug("%s: %s\n", 
+					"T3_RETRAN", 
+					cmt_print_cwnd(&cmd->obj.transport->asoc->peer.transport_addr_list));
+				cmt_debug("%s: %s", "T3_RETRAN", cmt_print_assoc(cmd->obj.transport->asoc));
+			}
 			/* Mark a transport for retransmission.  */
 			sctp_retransmit(&asoc->outqueue, cmd->obj.transport,
 					SCTP_RTXR_T3_RTX);

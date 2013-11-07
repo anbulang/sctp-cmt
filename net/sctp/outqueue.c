@@ -1065,7 +1065,7 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 				  */
 				if (transport == asoc->peer.active_path
 						&& asoc->peer.retran_path != asoc->peer.active_path) {
-//					cmt_debug("%s: switch to retran\n", __func__);
+					// cmt_debug("%s: switch to retran\n", __func__);
 					new_transport = asoc->peer.retran_path;
 					goto use_retran;
 				}
@@ -1200,20 +1200,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
 
-	int c = 0;
-	static char buf[256];
-	memset(buf, 0, sizeof(buf));
-	list_for_each_entry(transport, transport_list,
-		transports)
-		c += snprintf(
-			buf + c,
-			sizeof(buf) - c,
-			"trxpt|%p|cwnd=%d|ssthresh=%d|,",
-			transport,
-			transport->cwnd,
-			transport->ssthresh);
-
-	cmt_debug("%s: %s\n", __func__, buf);
+	cmt_debug("%s: %s\n", __func__, cmt_print_cwnd(transport_list));
 
 
 /*	// print association

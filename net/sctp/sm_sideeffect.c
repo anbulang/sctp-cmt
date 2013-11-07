@@ -57,6 +57,7 @@
 #include <net/sock.h>
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 
 static int sctp_cmd_interpreter(sctp_event_t event_type,
 				sctp_subtype_t subtype,
@@ -1448,12 +1449,14 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 			break;
 
 		case SCTP_CMD_T1_RETRAN:
+			cmt_debug("%s: %s", "T1_RETRAN", cmt_print_cwnd(&cmd->obj.transport->transports));
 			/* Mark a transport for retransmission.  */
 			sctp_retransmit(&asoc->outqueue, cmd->obj.transport,
 					SCTP_RTXR_T1_RTX);
 			break;
 
 		case SCTP_CMD_RETRAN:
+			cmt_debug("%s: %s", "T3_RETRAN", cmt_print_cwnd(&cmd->obj.transport->transports));
 			/* Mark a transport for retransmission.  */
 			sctp_retransmit(&asoc->outqueue, cmd->obj.transport,
 					SCTP_RTXR_T3_RTX);

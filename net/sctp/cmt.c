@@ -9,6 +9,7 @@
 
 #include <net/sctp/sctp.h>
 #include <net/sctp/cmt.h>
+#include <linux/list.h>   /* For struct list_head */
 
 
 char* cmt_print_trxpt(struct sctp_transport *t)
@@ -29,6 +30,23 @@ char* cmt_print_trxpt(struct sctp_transport *t)
 	    t->cmt_cuc.find_pseudo_cumack,
 	    t->cmt_cuc.new_pseudo_cumack);
     return ret;
+}
+
+char* cmt_print_cwnd(struct list_head *transport_list) {
+	int c = 0;
+	struct sctp_transport *transport;
+	static char buf[256];
+	memset(buf, 0, sizeof(buf));
+	list_for_each_entry(transport, transport_list,
+			transports)
+		c += snprintf(
+				buf + c,
+				sizeof(buf) - c,
+				"==>trxpt|%p|cwnd=%d|ssthresh=%d|,",
+				transport,
+				transport->cwnd,
+				transport->ssthresh);
+	return buf;
 }
 
 char* cmt_print_assoc(struct sctp_association *asoc)

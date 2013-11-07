@@ -31,4 +31,6 @@ extern char* cmt_print_assoc(struct sctp_association *asoc);
 extern char* cmt_print_sackhdr(struct sctp_sackhdr *sack);
 
 extern char* cmt_print_queued_tsn(struct list_head *queue, struct sctp_transport *transport);
+
+extern char* cmt_print_cwnd(struct list_head *transport_list);
 #endif /*__sctp_cmt__*/

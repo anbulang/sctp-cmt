@@ -210,13 +210,13 @@ static inline int sctp_cacc_skip(struct sctp_transport *primary,
 
 /** CMT-SFR algorithm
  */
-static inline int sctp_cmt_sfr(struct sctp_transport *transport,
+static inline int sctp_cmt_sfr_skip(struct sctp_transport *transport,
 				 __u32 tsn)
 {
 	if (!transport) { 
 //		cmt_debug("***********transport is null!***************\n");
 		dump_stack();
-		return 1;
+		return 0;
 	}
 	// say 	1. 6 was sent through A; 789 through B. 
 	//	2. The corresponding ack is 6,[8-9]
@@ -226,11 +226,11 @@ static inline int sctp_cmt_sfr(struct sctp_transport *transport,
 	if (transport->cmt_sfr.saw_newack &&
 			TSN_lt(tsn, transport->cmt_sfr.hisfd)) {
 //		cmt_debug("---->counter ++\n");
-		return 1;
+		return 0;
 	}
 
 //	cmt_debug("---->eliminate unneceseary counter++!\n");
-	return 0;
+	return 1;
 
 }
 /* Initialize an existing sctp_outq.  This does the boring stuff.
@@ -1720,20 +1720,18 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			/* SFR-CACC may require us to skip marking
 			 * this chunk as missing.
 			 */
-			if (!transport || (
-						!sctp_cacc_skip(primary,
-						chunk->transport,
-						count_of_newacks, tsn)
-						
-						&&
-
-						sctp_cmt_sfr(chunk->transport, tsn)
-						
-						)) {
+			bool cacc = sctp_cacc_skip(primary, chunk->transport, count_of_newacks, tsn);
+			bool sfr = sctp_cmt_sfr_skip(chunk->transport, tsn);
+//			if(sfr)
+//				cmt_debug("==>sfr works!\n");
+			if (!transport || !(cacc || sfr)) {
+//				if(sfr)
+//					cmt_debug("==>sfr! but transport == NULL");
 				chunk->tsn_missing_report++;
 
-				pr_debug("%s: tsn:0x%x missing counter:%d, reason: cacc=%d, sfr=%d\n",
-					 __func__, tsn, chunk->tsn_missing_report, cacc, sfr);
+				pr_debug("%s: tsn:0x%x missing counter:%d\n",
+						__func__, tsn, chunk->tsn_missing_report);
+
 			}
 		}
 		/*

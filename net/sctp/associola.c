@@ -913,10 +913,14 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 		if (!first || t->last_time_heard > first->last_time_heard) {
 			second = first;
 			first = t;
+			continue;
 		}
 		if (!second || t->last_time_heard > second->last_time_heard)
 			second = t;
 	}
+
+	if (!second)
+		second = first;
 
 	/* RFC 2960 6.4 Multi-Homed SCTP Endpoints
 	 *

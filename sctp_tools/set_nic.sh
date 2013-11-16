@@ -20,8 +20,8 @@ fi
 if [ $1 = "off" ]
 then
     echo "netem profile off"
-    sudo tc qdisc del dev eth0 root netem
-    sudo tc qdisc del dev eth1 root netem
+    sudo tc qdisc del dev eth0 root 
+    sudo tc qdisc del dev eth1 root 
     exit
 fi
 
@@ -36,28 +36,12 @@ fi
 if [ $1 = "on" ]
 then
     echo "netem profile on"
-#    tc qdisc add dev eth0 root netem delay 200ms 40ms 25% loss 15.3% 25% duplicate 1% corrupt 0.1% reorder 25% 50%
-#    tc qdisc add dev eth1 root netem delay 200ms 40ms 25% loss 15.3% 25% duplicate 1% corrupt 0.1% reorder 25% 50%
-
-    # long fat channel
-    sudo tc qdisc add dev eth0 root handle 1:0 netem #  delay 40ms 
-    sudo tc qdisc add dev eth0 parent 1:0 handle 2:0 tbf burst 40kb limit 4kb rate 1mbps
-
-    # long fat channel
-    sudo tc qdisc add dev eth1 root handle 4:0 netem # delay 40ms
-    sudo tc qdisc add dev eth1 parent 4:0 handle 5:0 tbf burst 40kb limit 4kb rate 1mbps
-    
-    # long fat channel
-#    sudo tc qdisc add dev eth0 root handle 1:0 netem  delay 400ms 40ms 10%
-#    sudo tc qdisc add dev eth0 parent 1:0 handle 2:0 tbf burst 40kb limit 40kb rate 1mbps
-
-    # long fat channel
-#    sudo tc qdisc add dev eth1 root handle 1:0 netem  delay 400ms 40ms 10%
-#    sudo tc qdisc add dev eth1 parent 1:0 handle 2:0 tbf burst 40kb limit 40kb rate 1mbps
-    
-    # long dealy and low bd channel
-#    sudo tc qdisc add dev eth1 root handle 1:0 netem  delay 40ms 4ms 2%
-#    sudo tc qdisc add dev eth1 parent 1:0 handle 2:0 tbf burst 20kb limit 20kb rate 256kbps
+    sudo tc qdisc add dev eth0 root tbf rate 0.5mbit		\
+	    burst 5kb latency 70ms peakrate 1mbit	\
+	    minburst 1540
+    sudo tc qdisc add dev eth1 root tbf rate 0.5mbit		\
+	    burst 5kb latency 70ms peakrate 1mbit	\
+	    minburst 1540
     exit
 fi
 

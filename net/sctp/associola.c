@@ -1306,6 +1306,10 @@ void sctp_assoc_update_retran_path(struct sctp_association *asoc)
 	struct list_head *head = &asoc->peer.transport_addr_list;
 	struct list_head *pos;
 
+	// TODO: This is really ugly, but we need some hack to have the
+	// retran_path fixed.
+	return;
+
 	if (asoc->peer.transport_count == 1)
 		return;
 

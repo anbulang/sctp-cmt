@@ -1456,10 +1456,10 @@ static int sctp_cmd_interpreter(sctp_event_t event_type,
 		case SCTP_CMD_T1_RETRAN:
 			if (cmd->obj.transport->asoc) {
 				cmt_debug("transport[%p] expired!\n", cmd->obj.transport);
-				cmt_debug("%s: %s\n", 
+				cmt_debug("\n%s: %s\n", 
 					"T1_RETRAN", 
 					cmt_print_cwnd(&cmd->obj.transport->asoc->peer.transport_addr_list));
-				cmt_debug("%s: %s", "T1_RETRAN", cmt_print_assoc(cmd->obj.transport->asoc));
+				cmt_debug("\n%s: %s", "T1_RETRAN", cmt_print_assoc(cmd->obj.transport->asoc));
 			}
 			/* Mark a transport for retransmission.  */
 			sctp_retransmit(&asoc->outqueue, cmd->obj.transport,

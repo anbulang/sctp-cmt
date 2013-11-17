@@ -1020,8 +1020,12 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			     (new_transport->state == SCTP_UNCONFIRMED) ||
 			     (new_transport->state == SCTP_PF)))
 				new_transport = asoc->peer.active_path;
-use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
-				continue;
+
+			bool retran_works = false;
+use_retran:	if (new_transport->state == SCTP_UNCONFIRMED) {
+			retran_works = false;
+			continue;
+		}
 
 			/* Change packets if necessary.  */
 			if (new_transport != transport) {
@@ -1067,7 +1071,12 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 						&& asoc->peer.retran_path != asoc->peer.active_path) {
 					// cmt_debug("%s: switch to retran\n", __func__);
 					new_transport = asoc->peer.retran_path;
+					WARN_ON(new_transport->state == SCTP_UNCONFIRMED);
+					retran_works = true;
 					goto use_retran;
+				} 
+				if(asoc->peer.retran_path == asoc->peer.active_path) {
+					cmt_debug("~~~>%s: %s", __func__, cmt_print_assoc(asoc));
 				}
 			case SCTP_XMIT_RWND_FULL: // 2
 			case SCTP_XMIT_PMTU_FULL: // 1
@@ -1084,6 +1093,8 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 				break;
 
 			case SCTP_XMIT_OK:
+				if(retran_works)
+					cmt_debug("=======>retran_works! @%p\n",asoc->peer.retran_path);
 				/* The sender is in the SHUTDOWN-PENDING state,
 				 * The sender MAY set the I-bit in the DATA
 				 * chunk header.
@@ -1200,7 +1211,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
 
-	cmt_debug("%s: %s\n", __func__, cmt_print_cwnd(transport_list));
+	cmt_debug("\n%s: %s\n", __func__, cmt_print_cwnd(transport_list));
 
 
 /*	// print association
@@ -1218,7 +1229,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 
 	to_console = cmt_print_sackhdr(sack);
 	cmt_debug("%s\n", to_console);
-*/	
+	
 	/* Print the context END */
 
 	sack_ctsn = ntohl(sack->cum_tsn_ack);
@@ -1622,7 +1633,8 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 			 * active if it is not so marked.
 			 */
 			if ((transport->state == SCTP_INACTIVE ||
-			     transport->state == SCTP_UNCONFIRMED) &&
+			     transport->state == SCTP_UNCONFIRMED 
+			     /*|| transport->state == SCTP_PF*/) &&
 			    sctp_cmp_addr_exact(&transport->ipaddr, saddr)) {
 				sctp_assoc_control_transport(
 					transport->asoc,
@@ -1722,11 +1734,10 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			 */
 			bool cacc = sctp_cacc_skip(primary, chunk->transport, count_of_newacks, tsn);
 			bool sfr = sctp_cmt_sfr_skip(chunk->transport, tsn);
-//			if(sfr)
-//				cmt_debug("==>sfr works!\n");
+//			bool sfr = false;
+			if(sfr)
+				cmt_debug("==>sfr works!\n");
 			if (!transport || !(cacc || sfr)) {
-//				if(sfr)
-//					cmt_debug("==>sfr! but transport == NULL");
 				chunk->tsn_missing_report++;
 
 				pr_debug("%s: tsn:0x%x missing counter:%d\n",

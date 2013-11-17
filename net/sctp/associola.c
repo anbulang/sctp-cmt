@@ -833,6 +833,7 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 	int spc_state = 0;
 	bool ulp_notify = true;
 
+	pr_debug("%s: on %p, action=%d\n", __func__, transport, command);
 	/* Record the transition on the transport.  */
 	switch (command) {
 	case SCTP_TRANSPORT_UP:
@@ -902,7 +903,8 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 	 * worry about it.
 	 */
 	first = NULL; second = NULL;
-
+	// diable changing the dmesg
+	return;
 	list_for_each_entry(t, &asoc->peer.transport_addr_list,
 			transports) {
 
@@ -913,8 +915,7 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 		if (!first || t->last_time_heard > first->last_time_heard) {
 			second = first;
 			first = t;
-		}
-		if (!second || t->last_time_heard > second->last_time_heard)
+		} else if (!second || t->last_time_heard > second->last_time_heard)
 			second = t;
 	}
 
@@ -934,6 +935,9 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 		second = first;
 		first = asoc->peer.primary_path;
 	}
+
+	if (!second)
+		second = first;
 
 	/* If we failed to find a usable transport, just camp on the
 	 * primary, even if it is inactive.
@@ -1302,6 +1306,8 @@ void sctp_assoc_update_retran_path(struct sctp_association *asoc)
 	struct list_head *head = &asoc->peer.transport_addr_list;
 	struct list_head *pos;
 
+	//TODO: THIS IS VERY WRONG! WE HAVE TO APPLY SOME HACKS
+	return;
 	if (asoc->peer.transport_count == 1)
 		return;
 

@@ -913,14 +913,9 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 		if (!first || t->last_time_heard > first->last_time_heard) {
 			second = first;
 			first = t;
-			continue;
-		}
-		if (!second || t->last_time_heard > second->last_time_heard)
+		} else if (!second || t->last_time_heard > second->last_time_heard)
 			second = t;
 	}
-
-	if (!second)
-		second = first;
 
 	/* RFC 2960 6.4 Multi-Homed SCTP Endpoints
 	 *
@@ -938,6 +933,9 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 		second = first;
 		first = asoc->peer.primary_path;
 	}
+
+	if (!second)
+		second = first;
 
 	/* If we failed to find a usable transport, just camp on the
 	 * primary, even if it is inactive.

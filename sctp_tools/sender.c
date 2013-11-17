@@ -10,8 +10,8 @@
 #include <sys/types.h>
 
 const int local_port = 7070;
-const char lan_addr[] = "192.168.1.106";
-const char wifi_addr[] = "192.168.2.110";
+const char lan_addr[] = "192.168.1.102";
+const char wifi_addr[] = "192.168.2.102";
 
 const int peer_port = 8080;
 const char p_lan_addr[] = "192.168.1.114";
@@ -21,7 +21,7 @@ const char file_name[] = "/home/xiangzhc/ponponpon.mp3";
 
 struct sockaddr_in local_addr[2];
 struct sockaddr_in peer_addr[2];
-#define REALLY_BIG (128 * 1024)
+#define REALLY_BIG (64 * 1024)
 
 char message[REALLY_BIG] = "";
 

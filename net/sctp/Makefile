@@ -22,10 +22,10 @@ sctp-$(subst m,y,$(CONFIG_IPV6))	+= ipv6.o
 
 #CFLAGS_sm_statetable.o := -DDEBUG
 #CFLAGS_sm_statefuns.o := -DDEBUG
-#CFLAGS_sm_sideeffect.o := -DDEBUG
+CFLAGS_sm_sideeffect.o := -DDEBUG
 #CFLAGS_protocol.o := -DDEBUG
 #CFLAGS_endpointola.o := -DDEBUG
-#CFLAGS_associola.o := -DDEBUG
+CFLAGS_associola.o := -DDEBUG
 CFLAGS_transport.o := -DDEBUG
 #CFLAGS_chunk.o := -DDEBUG
 #CFLAGS_sm_make_chunk.o := -DDEBUG

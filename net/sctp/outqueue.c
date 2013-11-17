@@ -210,13 +210,13 @@ static inline int sctp_cacc_skip(struct sctp_transport *primary,
 
 /** CMT-SFR algorithm
  */
-static inline int sctp_cmt_sfr(struct sctp_transport *transport,
+static inline int sctp_cmt_sfr_skip(struct sctp_transport *transport,
 				 __u32 tsn)
 {
 	if (!transport) { 
 //		cmt_debug("***********transport is null!***************\n");
 		dump_stack();
-		return 1;
+		return 0;
 	}
 	// say 	1. 6 was sent through A; 789 through B. 
 	//	2. The corresponding ack is 6,[8-9]
@@ -226,11 +226,11 @@ static inline int sctp_cmt_sfr(struct sctp_transport *transport,
 	if (transport->cmt_sfr.saw_newack &&
 			TSN_lt(tsn, transport->cmt_sfr.hisfd)) {
 //		cmt_debug("---->counter ++\n");
-		return 1;
+		return 0;
 	}
 
 //	cmt_debug("---->eliminate unneceseary counter++!\n");
-	return 0;
+	return 1;
 
 }
 /* Initialize an existing sctp_outq.  This does the boring stuff.
@@ -1020,8 +1020,12 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 			     (new_transport->state == SCTP_UNCONFIRMED) ||
 			     (new_transport->state == SCTP_PF)))
 				new_transport = asoc->peer.active_path;
-use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
-				continue;
+
+			bool retran_works = false;
+use_retran:	if (new_transport->state == SCTP_UNCONFIRMED) {
+			retran_works = false;
+			continue;
+		}
 
 			/* Change packets if necessary.  */
 			if (new_transport != transport) {
@@ -1067,7 +1071,12 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 						&& asoc->peer.retran_path != asoc->peer.active_path) {
 					// cmt_debug("%s: switch to retran\n", __func__);
 					new_transport = asoc->peer.retran_path;
+					WARN_ON(new_transport->state == SCTP_UNCONFIRMED);
+					retran_works = true;
 					goto use_retran;
+				} 
+				if(asoc->peer.retran_path == asoc->peer.active_path) {
+					cmt_debug("~~~>%s: %s", __func__, cmt_print_assoc(asoc));
 				}
 			case SCTP_XMIT_RWND_FULL: // 2
 			case SCTP_XMIT_PMTU_FULL: // 1
@@ -1084,6 +1093,8 @@ use_retran:	if (new_transport->state == SCTP_UNCONFIRMED)
 				break;
 
 			case SCTP_XMIT_OK:
+				if(retran_works)
+					cmt_debug("=======>retran_works! @%p\n",asoc->peer.retran_path);
 				/* The sender is in the SHUTDOWN-PENDING state,
 				 * The sender MAY set the I-bit in the DATA
 				 * chunk header.
@@ -1200,7 +1211,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
 
-	cmt_debug("%s: %s\n", __func__, cmt_print_cwnd(transport_list));
+	cmt_debug("\n%s: %s\n", __func__, cmt_print_cwnd(transport_list));
 
 
 /*	// print association
@@ -1720,20 +1731,18 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			/* SFR-CACC may require us to skip marking
 			 * this chunk as missing.
 			 */
-			if (!transport || (
-						!sctp_cacc_skip(primary,
-						chunk->transport,
-						count_of_newacks, tsn)
-						
-						&&
-
-						sctp_cmt_sfr(chunk->transport, tsn)
-						
-						)) {
+			bool cacc = sctp_cacc_skip(primary, chunk->transport, count_of_newacks, tsn);
+			/*Apply CMT-SFR*/
+			bool sfr = sctp_cmt_sfr_skip(chunk->transport, tsn);
+//			bool sfr = false;
+			if(sfr)
+				cmt_debug("==>sfr works!\n");
+			if (!transport || !(cacc || sfr)) {
 				chunk->tsn_missing_report++;
 
-				pr_debug("%s: tsn:0x%x missing counter:%d, reason: cacc=%d, sfr=%d\n",
-					 __func__, tsn, chunk->tsn_missing_report, cacc, sfr);
+				pr_debug("%s: tsn:0x%x missing counter:%d\n",
+						__func__, tsn, chunk->tsn_missing_report);
+
 			}
 		}
 		/*

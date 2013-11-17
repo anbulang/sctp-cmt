@@ -42,10 +42,12 @@ char* cmt_print_cwnd(struct list_head *transport_list) {
 		c += snprintf(
 				buf + c,
 				sizeof(buf) - c,
-				"==>trxpt|%p|cwnd=%d|ssthresh=%d|,",
+				"==>trx|%p|c=%d|ssh=%d|fly=%d|,",
 				transport,
 				transport->cwnd,
-				transport->ssthresh);
+				transport->ssthresh,
+				transport->flight_size
+				);
 	return buf;
 }
 

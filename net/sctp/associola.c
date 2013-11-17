@@ -833,6 +833,7 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 	int spc_state = 0;
 	bool ulp_notify = true;
 
+	pr_debug("%s: on %p, action=%d\n", __func__, transport, command);
 	/* Record the transition on the transport.  */
 	switch (command) {
 	case SCTP_TRANSPORT_UP:
@@ -902,7 +903,8 @@ void sctp_assoc_control_transport(struct sctp_association *asoc,
 	 * worry about it.
 	 */
 	first = NULL; second = NULL;
-
+	// diable changing the dmesg
+	return;
 	list_for_each_entry(t, &asoc->peer.transport_addr_list,
 			transports) {
 

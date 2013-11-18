@@ -762,6 +762,11 @@ struct sctp_transport *sctp_assoc_add_peer(struct sctp_association *asoc,
 		asoc->peer.retran_path = peer;
 	}
 
+	// CMT-CUC (0)
+	// At the beginning of an association
+	// for any destiantionss d, reset
+	peer->cmt_cuc.find_pseudo_cumack = true;
+
 	return peer;
 }
 

@@ -952,8 +952,24 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 
 			/* Switch transports & prepare the packet.  */
 
+			struct sctp_transport *t;
 			transport = asoc->peer.retran_path;
+			int vacancy = transport->cwnd - transport->flight_size; 
 
+			list_for_each_entry(t, &(asoc->peer.transport_addr_list), transports) {
+				int tmp_vacancy = t->cwnd - t->flight_size;
+				if (vacancy < tmp_vacancy/* && t->ssthresh > t->cwnd*/) {
+					transport = t;
+					vacancy = tmp_vacancy;
+				}
+				cmt_debug("%p.vacancy==%d\n", t, tmp_vacancy);
+			}
+			if(vacancy < transport->pathmtu)
+				goto sctp_flush_out;
+			cmt_debug("choose %p as retran, pathmtu=%d\n", transport, transport->pathmtu);
+			
+		
+	
 			if (list_empty(&transport->send_ready)) {
 				list_add_tail(&transport->send_ready,
 					      &transport_list);

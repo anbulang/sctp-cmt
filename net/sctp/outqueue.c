@@ -947,8 +947,8 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 		if (!list_empty(&q->retransmit)) {
 			if (asoc->peer.retran_path->state == SCTP_UNCONFIRMED)
 				goto sctp_flush_out;
-			if (transport == asoc->peer.retran_path)
-				goto retran;
+	//		if (transport == asoc->peer.retran_path)
+	//			goto retran;
 
 			/* Switch transports & prepare the packet.  */
 

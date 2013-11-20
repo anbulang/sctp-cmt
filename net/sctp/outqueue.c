@@ -964,13 +964,18 @@ static int sctp_outq_flush(struct sctp_outq *q, int rtx_timeout)
 				}
 				cmt_debug("%p.vacancy==%d\n", t, tmp_vacancy);
 			}
-			if(vacancy < transport->pathmtu)
+			vacancy = transport->cwnd - transport->flight_size;
+			cmt_debug("choose %p as retran, pathmtu=%d, vancancy=%d", 
+					transport, transport->pathmtu,
+					vacancy);
+			// arithmetic comparison between a signed and unsigned
+			if(vacancy < 0 || vacancy < transport->pathmtu) {
+				cmt_debug("skip this round\n");
 				goto sctp_flush_out;
-			cmt_debug("choose %p as retran, pathmtu=%d\n", transport, transport->pathmtu);
-			
-		
+			}
 	
-			if (list_empty(&transport->send_ready)) {
+			// END of Balancer
+end_of_balancer:	if (list_empty(&transport->send_ready)) {
 				list_add_tail(&transport->send_ready,
 					      &transport_list);
 			}

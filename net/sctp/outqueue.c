@@ -1396,13 +1396,32 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 			 * while DATA was outstanding).
 			 */
 			if (!tchunk->tsn_gap_acked) {
-				tchunk->tsn_gap_acked = 1;
 				if (TSN_lt(*highest_new_tsn_in_sack, tsn))
 					*highest_new_tsn_in_sack = tsn;
 				bytes_acked += sctp_data_size(tchunk);
 				if (!tchunk->transport)
 					migrate_bytes += sctp_data_size(tchunk);
 				forward_progress = true;
+				/*
+				 * SFR-CACC algorithm:
+				 * 2) If the SACK contains gap acks
+				 * and the flag CHANGEOVER_ACTIVE is
+				 * set the receiver of the SACK MUST
+				 * take the following action:
+				 *
+				 * B) For each TSN t being acked that
+				 * has not been acked in any SACK so
+				 * far, set cacc_saw_newack to 1 for
+				 * the destination that the TSN was
+				 * sent to.
+				 */
+				if (transport &&
+				    sack->num_gap_ack_blocks &&
+				    q->asoc->peer.primary_path->cacc.
+				    changeover_active)
+					transport->cacc.cacc_saw_newack	= 1;
+			
+				tchunk->tsn_gap_acked = 1;
 			}
 
 			if (TSN_lte(tsn, sack_ctsn)) {
@@ -1417,29 +1436,6 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				 */
 				restart_timer = 1;
 				forward_progress = true;
-
-				if (!tchunk->tsn_gap_acked) {
-					/*
-					 * SFR-CACC algorithm:
-					 * 2) If the SACK contains gap acks
-					 * and the flag CHANGEOVER_ACTIVE is
-					 * set the receiver of the SACK MUST
-					 * take the following action:
-					 *
-					 * B) For each TSN t being acked that
-					 * has not been acked in any SACK so
-					 * far, set cacc_saw_newack to 1 for
-					 * the destination that the TSN was
-					 * sent to.
-					 */
-					if (transport &&
-					    sack->num_gap_ack_blocks &&
-					    q->asoc->peer.primary_path->cacc.
-					    changeover_active)
-						transport->cacc.cacc_saw_newack
-							= 1;
-				}
-
 				list_add_tail(&tchunk->transmitted_list,
 					      &q->sacked);
 			} else {
@@ -1460,6 +1456,7 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				 */
 				list_add_tail(lchunk, &tlist);
 			}
+
 		} else {
 			if (tchunk->tsn_gap_acked) {
 				pr_debug("%s: receiver reneged on data TSN:0x%x\n",

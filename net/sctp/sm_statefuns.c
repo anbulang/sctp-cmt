@@ -64,6 +64,7 @@
 #include <linux/skbuff.h>
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 #include <net/sctp/structs.h>
 
 static struct sctp_packet *sctp_abort_pkt_new(struct net *net,
@@ -3170,6 +3171,9 @@ sctp_disposition_t sctp_sf_eat_sack_6_2(struct net *net,
 		return sctp_sf_pdiscard(net, ep, asoc, type, arg, commands);
 	chunk->subh.sack_hdr = sackh;
 	ctsn = ntohl(sackh->cum_tsn_ack);
+
+	if(chunk->chunk_hdr->flags & (1 << SCTP_SACK_NUM_PDU_BEG))
+		cmt_debug("==========>bit set!\n");
 
 	/* i) If Cumulative TSN Ack is less than the Cumulative TSN
 	 *     Ack Point, then drop the SACK.  Since Cumulative TSN

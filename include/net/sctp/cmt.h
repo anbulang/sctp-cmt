@@ -33,4 +33,10 @@ extern char* cmt_print_sackhdr(struct sctp_sackhdr *sack);
 extern char* cmt_print_queued_tsn(struct list_head *queue, struct sctp_transport *transport);
 
 extern char* cmt_print_cwnd(struct list_head *transport_list);
+
+/* SACK Chunk Specific Flags*/
+enum {
+	SCTP_SACK_NUM_PDU_BEG	= 6,
+	SCTP_SACK_NUM_PDU_LEN	= 1
+};
 #endif /*__sctp_cmt__*/

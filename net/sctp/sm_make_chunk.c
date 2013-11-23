@@ -67,6 +67,7 @@
 #include <linux/random.h>	/* for get_random_bytes */
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
+#include <net/sctp/cmt.h>
 
 static struct sctp_chunk *sctp_make_chunk(const struct sctp_association *asoc,
 					  __u8 type, __u8 flags, int paylen);
@@ -823,6 +824,12 @@ struct sctp_chunk *sctp_make_sack(const struct sctp_association *asoc)
 			trans->sack_generation = 0;
 		aptr->peer.sack_generation = 1;
 	}
+
+	/* If this sack is for the 2nd data chunk. Refer to RFC2581*/
+	if(asoc->peer.sack_cnt >= 2) {// This is ugly!
+		retval->chunk_hdr->flags |= (1 << SCTP_SACK_NUM_PDU_BEG);
+	}
+
 nodata:
 	return retval;
 }

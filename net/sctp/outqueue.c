@@ -73,12 +73,15 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				   struct sctp_transport *transport,
 				   union sctp_addr *saddr,
 				   struct sctp_sackhdr *sack,
-				   __u32 *highest_new_tsn);
+				   __u32 *highest_new_tsn,
+				   __u32 *lowest_new_tsn);
 
 static void sctp_mark_missing(struct sctp_outq *q,
 			      struct list_head *transmitted_queue,
 			      struct sctp_transport *transport,
 			      __u32 highest_new_tsn,
+  			      __u32 lowest_new_tsn,
+				  int num_pdu_acked,
 			      int count_of_newacks);
 
 static void sctp_generate_fwdtsn(struct sctp_outq *q, __u32 sack_ctsn);
@@ -233,6 +236,57 @@ static inline int sctp_cmt_sfr_skip(struct sctp_transport *transport,
 	return 1;
 
 }
+
+/** CMT-DAC algorithm step (4) */
+static inline int sctp_dac_missing(struct sctp_transport *transport,
+				 __u32 tsn, int num_pdu_acked, 
+				 __u32 lowest_in_new, __u32 highest_in_new)
+{
+	bool only_you;
+	struct list_head *pos, *temp;
+	struct sctp_transport *tmp_trxpt;
+	int retval;
+	BUG_ON(!transport);
+	BUG_ON(num_pdu_acked < 0 || num_pdu_acked > 2);
+
+	only_you = true;
+	list_for_each_safe(pos, temp, &transport->transports) { 
+		tmp_trxpt = list_entry(pos, struct sctp_transport, transports);
+		if (tmp_trxpt->cmt_sfr.saw_newack && tmp_trxpt != transport) {
+			only_you = false;
+			break;
+		}
+	}
+	/* DAC 4)
+	 * to determine whether missing report for a tsn tm should be ++
+	 * let dm be the destination to which tm was sent;
+	 *  if (dm.saw_newack==true) and (dm.highest_in_sack_for_dest > tm)
+	 *  then
+	 */
+	if(transport->cmt_sfr.saw_newack && TSN_lt(tsn, transport->cmt_sfr.hisfd)) {
+		/* i) if any other desintations does not "see_new" */
+		if(only_you) {// the acked packets are only sent through this destination
+			if (lowest_in_new < tsn && tsn < highest_in_new)
+				retval = 1;
+			else
+				retval = num_pdu_acked;
+		}
+		else // ii) others see new as well
+			retval = 1;
+	} else 
+		retval = 0;
+
+	cmt_debug("=======>retval=%d,tsn=0x%x, only_you=%d, lowest=0x%x, highest=0x%x, pdu_num=%d\n", 
+			retval,
+			tsn,
+			only_you, 
+			lowest_in_new,
+			highest_in_new,
+			num_pdu_acked
+		 );
+	return retval;
+}
+
 /* Initialize an existing sctp_outq.  This does the boring stuff.
  * You still need to define handlers if you really want to DO
  * something with this structure...
@@ -1220,7 +1274,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	struct list_head *lchunk, *transport_list, *temp;
 	sctp_sack_variable_t *frags = sack->variable;
 	__u32 sack_ctsn, ctsn, tsn;
-	__u32 highest_tsn, highest_new_tsn;
+	__u32 highest_tsn, highest_new_tsn, lowest_new_tsn;
 	__u32 sack_a_rwnd;
 	char *to_console;
 	unsigned int outstanding;
@@ -1228,6 +1282,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	int count_of_newacks = 0;
 	int gap_ack_blocks;
 	u8 accum_moved = 0;
+	int num_pdu_acked;
 
 	/* Grab the association's destination address list. */
 	transport_list = &asoc->peer.transport_addr_list;
@@ -1256,6 +1311,10 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	sack_ctsn = ntohl(sack->cum_tsn_ack);
 	gap_ack_blocks = ntohs(sack->num_gap_ack_blocks);
 	asoc->stats.gapcnt += gap_ack_blocks;
+
+	/*For DAC - check if this SACK is for 2 the consecutive Data Chunks */
+	num_pdu_acked = 
+		(chunk->chunk_hdr->flags&(1 << SCTP_SACK_NUM_PDU_BEG))? 2: 1;
 	/*
 	 * SFR-CACC algorithm:
 	 * On receipt of a SACK the sender SHOULD execute the
@@ -1320,6 +1379,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	if (TSN_lt(asoc->highest_sacked, highest_tsn))
 		asoc->highest_sacked = highest_tsn;
 
+	lowest_new_tsn = asoc->next_tsn;
 	highest_new_tsn = sack_ctsn;
 
 	/* CMT-CUC (2) 
@@ -1355,7 +1415,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	/* Run through the retransmit queue.  Credit bytes received
 	 * and free those chunks that we can.
 	 */
-	sctp_check_transmitted(q, &q->retransmit, NULL, NULL, sack, &highest_new_tsn);
+	sctp_check_transmitted(q, &q->retransmit, NULL, NULL, sack, &highest_new_tsn, &lowest_new_tsn);
 
 	/* Run through the transmitted queue.
 	 * Credit bytes received and free those chunks which we can.
@@ -1365,7 +1425,7 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 	list_for_each_entry(transport, transport_list, transports) {
 		sctp_check_transmitted(q, &transport->transmitted,
 				       transport, &chunk->source, sack,
-				       &highest_new_tsn);
+				       &highest_new_tsn, &lowest_new_tsn);
 		/*
 		 * SFR-CACC algorithm:
 		 * C) Let count_of_newacks be the number of
@@ -1391,8 +1451,10 @@ int sctp_outq_sack(struct sctp_outq *q, struct sctp_chunk *chunk)
 			highest_new_tsn = highest_tsn;
 
 		list_for_each_entry(transport, transport_list, transports)
-			sctp_mark_missing(q, &transport->transmitted, transport,
-					  highest_new_tsn, count_of_newacks);
+			sctp_mark_missing(q, &transport->transmitted, 
+					  transport, highest_new_tsn, 
+					  lowest_new_tsn, num_pdu_acked, 
+					  count_of_newacks);
 	}
 
 	/* Update unack_data field in the assoc. */
@@ -1477,7 +1539,8 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 				   struct sctp_transport *transport,
 				   union sctp_addr *saddr,
 				   struct sctp_sackhdr *sack,
-				   __u32 *highest_new_tsn_in_sack)
+				   __u32 *highest_new_tsn_in_sack,
+				   __u32 *lowest_new_tsn_in_sack)
 {
 	struct list_head *lchunk;
 	struct sctp_chunk *tchunk;
@@ -1550,6 +1613,9 @@ static void sctp_check_transmitted(struct sctp_outq *q,
 			 * while DATA was outstanding).
 			 */
 			if (!tchunk->tsn_gap_acked) {
+				// Find the lowest & highest respective
+				if (TSN_lt(tsn, *lowest_new_tsn_in_sack))
+					*lowest_new_tsn_in_sack = tsn;
 				if (TSN_lt(*highest_new_tsn_in_sack, tsn))
 					*highest_new_tsn_in_sack = tsn;
 				bytes_acked += sctp_data_size(tchunk);
@@ -1811,6 +1877,8 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			      struct list_head *transmitted_queue,
 			      struct sctp_transport *transport,
 			      __u32 highest_new_tsn_in_sack,
+			      __u32 lowest_new_tsn_in_sack,
+			      int num_pdu_acked,
 			      int count_of_newacks)
 {
 	struct sctp_chunk *chunk;
@@ -1818,6 +1886,7 @@ static void sctp_mark_missing(struct sctp_outq *q,
 	char do_fast_retransmit = 0;
 	struct sctp_association *asoc = q->asoc;
 	struct sctp_transport *primary = asoc->peer.primary_path;
+	int missing_inc = 1;
 
 	list_for_each_entry(chunk, transmitted_queue, transmitted_list) {
 
@@ -1839,13 +1908,19 @@ static void sctp_mark_missing(struct sctp_outq *q,
 			 */
 			bool cacc = sctp_cacc_skip(primary, chunk->transport, count_of_newacks, tsn);
 			/*Apply CMT-SFR*/
-			bool sfr = sctp_cmt_sfr_skip(chunk->transport, tsn);
-//			bool sfr = false;
+//			bool sfr = sctp_cmt_sfr_skip(chunk->transport, tsn);
+			bool sfr = false;
 			if(sfr)
 				cmt_debug("==>sfr works!\n");
 			if (!transport || !(cacc || sfr)) {
-				chunk->tsn_missing_report++;
+				missing_inc = sctp_dac_missing(transport,
+						tsn, num_pdu_acked,
+						lowest_new_tsn_in_sack,
+						highest_new_tsn_in_sack);
+				chunk->tsn_missing_report+= missing_inc;
 
+				if (missing_inc >= 2)
+					cmt_debug("--->DAC works!\n");
 				pr_debug("%s: tsn:0x%x missing counter:%d\n",
 						__func__, tsn, chunk->tsn_missing_report);
 

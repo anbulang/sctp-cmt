@@ -188,6 +188,9 @@ static int sctp_gen_sack(struct sctp_association *asoc, int force,
 	 *
 	 * [This is actually not mentioned in Section 6, but we
 	 * implement it here anyway. --piggy]
+	 *
+	 * [This check should be removed as unordered delivery is common to
+	 * CMT --chang]
 	 */
 	if (max_tsn_seen != ctsn)
 		asoc->peer.sack_needed = 1;

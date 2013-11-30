@@ -100,4 +100,8 @@ config SCTP_COOKIE_HMAC_SHA1
 	select CRYPTO_SHA1 if SCTP_COOKIE_HMAC_SHA1
 
 
+config SCTP_CMT
+	bool "Enable CMT-SCTP"
+	help
+	  Enable CMT
 endif # IP_SCTP

@@ -17,5 +17,6 @@ sctp_probe-y := probe.o
 sctp-$(CONFIG_SCTP_DBG_OBJCNT) += objcnt.o
 sctp-$(CONFIG_PROC_FS) += proc.o
 sctp-$(CONFIG_SYSCTL) += sysctl.o
+sctp-$(CONFIG_SCTP_CMT) += cmt.o
 
 sctp-$(subst m,y,$(CONFIG_IPV6))	+= ipv6.o

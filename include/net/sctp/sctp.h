@@ -263,6 +263,12 @@ static inline void sctp_max_rto(struct sctp_association *asoc,
 /*
  * Macros for keeping a global reference of object allocations.
  */
+#ifdef CONFIG_SCTP_CMT
+	extern int cmt_foobar(int param);
+#else
+	static inline int cmt_foobar(int param){return 0;}
+#endif
+
 #ifdef CONFIG_SCTP_DBG_OBJCNT
 
 extern atomic_t sctp_dbg_objcnt_sock;
